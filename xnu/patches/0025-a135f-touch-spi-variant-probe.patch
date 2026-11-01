@@ -1,0 +1,163 @@
+diff --git a/bsd/dev/a135f_touch.c b/bsd/dev/a135f_touch.c
+--- a/bsd/dev/a135f_touch.c
++++ b/bsd/dev/a135f_touch.c
+@@ -268,4 +268,14 @@
+  * ------------------------------------------------------------------ */
+ 
++/* Variant flags, probed by spi_selftest() when the internal loopback does not work out of the box. */
++#define F_MUX1          0x01    /* IPCLK from gout_clkcmu_cmgp_bus instead of the RCO */
++#define F_FILLPOST      0x02    /* enable the channel first, fill the TX FIFO afterwards */
++#define F_NOPKT         0x04    /* no packet count */
++#define F_CS0           0x08    /* CS_REG = 0 instead of CS_SIG_INACT */
++#define F_USIRST        0x10    /* pulse the USI reset after the clocks are on */
++#define F_ALL           0x20
++static unsigned cfg_flags;
++static unsigned spin_limit = 20000;
++
+ static inline uint32_t rd32(vm_offset_t b, uint32_t o) { return *(volatile uint32_t *)(b + o); }
+ static inline void wr32(vm_offset_t b, uint32_t o, uint32_t v) { *(volatile uint32_t *)(b + o) = v; }
+@@ -350,11 +360,18 @@
+ 
+ 	/* s3c64xx_enable_datapath(), polled: packet count, fill the TX FIFO, then channel on */
+-	wr32(spi, SPI_PACKET_CNT, PKT_EN | n);
++	if (!(cfg_flags & F_NOPKT)) {
++		wr32(spi, SPI_PACKET_CNT, PKT_EN | n);
++	}
++	if (cfg_flags & F_FILLPOST) {
++		wr32(spi, SPI_CH_CFG, (rd32(spi, SPI_CH_CFG) & ~(CH_SW_RST | CH_HS_EN)) | CH_RXON | CH_TXON);
++	}
+ 	for (unsigned i = 0; i < n; i++) {
+ 		*(volatile uint8_t *)(spi + SPI_TX_DATA) = tx ? tx[i] : 0xff;
+ 	}
+-	wr32(spi, SPI_CH_CFG, (rd32(spi, SPI_CH_CFG) & ~(CH_SW_RST | CH_HS_EN)) | CH_RXON | CH_TXON);
++	if (!(cfg_flags & F_FILLPOST)) {
++		wr32(spi, SPI_CH_CFG, (rd32(spi, SPI_CH_CFG) & ~(CH_SW_RST | CH_HS_EN)) | CH_RXON | CH_TXON);
++	}
+ 	while (ST_RX_LVL(rd32(spi, SPI_STATUS)) < n) {
+-		if (++spins > 20000) {
++		if (++spins > spin_limit) {
+ 			err = ETIMEDOUT;
+ 			break;
+@@ -383,5 +400,5 @@
+ {
+ 	/* CMU_CMGP: USI0 from the 49.152 MHz RCO, divide by 2 (24.576 MHz IPCLK, SCK = IPCLK / 4), gates on */
+-	wr32(cmu, CMU_MUX_USI0, 0);
++	wr32(cmu, CMU_MUX_USI0, (cfg_flags & F_MUX1) ? 1 : 0);
+ 	cmu_wait(CMU_MUX_USI0);
+ 	wr32(cmu, CMU_DIV_USI0, 1);
+@@ -391,4 +408,8 @@
+ 	/* USI: SPI mode, out of reset (exynos-usi.c) */
+ 	wr32(sysreg, SYSREG_USI0_CONF, (1u << 1));
++	if (cfg_flags & F_USIRST) {
++		wr32(spi, USI_CON, rd32(spi, USI_CON) | 1u);
++		delay(5);
++	}
+ 	wr32(spi, USI_CON, rd32(spi, USI_CON) & ~1u);
+ 	delay(5);
+@@ -402,5 +423,5 @@
+ 	wr32(alive, 0, rd32(alive, 0) & ~0xfu);
+ 	/* s3c64xx_spi_hwinit() + s3c64xx_spi_config(): 8 bit, mode 3, no swap, no DMA, no interrupts */
+-	wr32(spi, SPI_CS_REG, CS_SIG_INACT);
++	wr32(spi, SPI_CS_REG, (cfg_flags & F_CS0) ? 0 : CS_SIG_INACT);
+ 	wr32(spi, SPI_INT_EN, 0);
+ 	wr32(spi, SPI_MODE_CFG, 0);
+@@ -416,26 +437,89 @@
+ }
+ 
+-/* Internal loopback (MODE_CFG SELF_LOOPBACK, has_loopback on exynos850): tells whether the SoC side
+- * (clocks, USI mode, FIFO handling) works, independent of the touch controller. */
+-static void
+-spi_selftest(void)
++/* One internal-loopback transfer (MODE_CFG SELF_LOOPBACK, has_loopback on exynos850). */
++static int
++spi_loop_once(uint8_t *got)
+ {
+ 	static const uint8_t pat[16] = { 0xa5, 0x5a, 0x00, 0xff, 0x12, 0x34, 0x56, 0x78,
+ 		                         0x9a, 0xbc, 0xde, 0xf0, 0x01, 0x80, 0x7f, 0xc3 };
+-	uint8_t got[16];
+ 	int e;
+ 
+-	bzero(got, sizeof(got));
++	bzero(got, sizeof(pat));
+ 	wr32(spi, SPI_MODE_CFG, rd32(spi, SPI_MODE_CFG) | MODE_LOOPBACK);
+ 	e = spi_chunk(pat, got, (unsigned)sizeof(pat));
+ 	wr32(spi, SPI_MODE_CFG, rd32(spi, SPI_MODE_CFG) & ~MODE_LOOPBACK);
+-	spi_loop_ok = (e == 0 && memcmp(pat, got, sizeof(pat)) == 0);
+-	spi_loop_done = true;
++	return (e == 0 && memcmp(pat, got, sizeof(pat)) == 0) ? 0 : (e ? e : EIO);
++}
++
++/* Watch a stalled transfer: status / packet counter / channel config after 10 us, 200 us, 5 ms. */
++static void
++spi_stall_probe(unsigned flags)
++{
++	uint32_t st[3], pk[3], ch[3];
++	unsigned old = cfg_flags;
++
++	cfg_flags = flags;
++	spi_hw_init();
++	wr32(spi, SPI_MODE_CFG, rd32(spi, SPI_MODE_CFG) | MODE_LOOPBACK);
++	wr32(spi, SPI_PACKET_CNT, PKT_EN | 16);
++	for (unsigned i = 0; i < 16; i++) {
++		*(volatile uint8_t *)(spi + SPI_TX_DATA) = (uint8_t)i;
++	}
++	wr32(spi, SPI_CH_CFG, (rd32(spi, SPI_CH_CFG) & ~(CH_SW_RST | CH_HS_EN)) | CH_RXON | CH_TXON);
++	delay(10);
++	st[0] = rd32(spi, SPI_STATUS); pk[0] = rd32(spi, SPI_PACKET_CNT); ch[0] = rd32(spi, SPI_CH_CFG);
++	delay(190);
++	st[1] = rd32(spi, SPI_STATUS); pk[1] = rd32(spi, SPI_PACKET_CNT); ch[1] = rd32(spi, SPI_CH_CFG);
++	delay(4800);
++	st[2] = rd32(spi, SPI_STATUS); pk[2] = rd32(spi, SPI_PACKET_CNT); ch[2] = rd32(spi, SPI_CH_CFG);
++	wr32(spi, SPI_MODE_CFG, rd32(spi, SPI_MODE_CFG) & ~MODE_LOOPBACK);
++	spi_flush_fifo();
++	printf("A135F TOUCH: stall f=%02x st %08x %08x %08x pkt %08x %08x %08x ch %08x\n",
++	    flags, st[0], st[1], st[2], pk[0], pk[1], pk[2], ch[2]);
++	cfg_flags = old;
++}
++
++/* Internal loopback tells whether the SoC side (clocks, USI mode, FIFO handling) works, independent of
++ * the touch controller. If it does not, try every variant of the clock/USI/transfer setup and keep the
++ * first one that passes. */
++static void
++spi_selftest(void)
++{
++	uint8_t got[16];
++	uint32_t pass = 0;
++	int e, first = -1;
++
++	e = spi_loop_once(got);
+ 	printf("A135F TOUCH: SPI regs gatip %08x gatp %08x mux %08x div %08x usicon %08x sysreg %08x ch %08x mode %08x st %08x\n",
+ 	    rd32(cmu, CMU_GAT_USI0_IP), rd32(cmu, CMU_GAT_USI0_P), rd32(cmu, CMU_MUX_USI0), rd32(cmu, CMU_DIV_USI0),
+ 	    rd32(spi, USI_CON), rd32(sysreg, SYSREG_USI0_CONF), rd32(spi, SPI_CH_CFG), rd32(spi, SPI_MODE_CFG),
+ 	    rd32(spi, SPI_STATUS));
+-	printf("A135F TOUCH: SPI loopback %s (err %d, rx %02x %02x %02x %02x)\n",
+-	    spi_loop_ok ? "ok" : "FAILED", e, got[0], got[1], got[2], got[3]);
++	if (e) {
++		unsigned saved = spin_limit;
++
++		spi_stall_probe(0);
++		spi_stall_probe(F_MUX1);
++		spin_limit = 400;
++		for (unsigned f = 0; f < F_ALL; f++) {
++			cfg_flags = f;
++			spi_hw_init();
++			if (!spi_loop_once(got)) {
++				pass |= 1u << f;
++				if (first < 0) {
++					first = (int)f;
++				}
++			}
++		}
++		spin_limit = saved;
++		printf("A135F TOUCH: SPI variants passing %08x first %d (flags 1=mux1 2=fillpost 4=nopkt 8=cs0 10=usirst)\n",
++		    pass, first);
++		cfg_flags = first >= 0 ? (unsigned)first : 0;
++		spi_hw_init();
++		e = spi_loop_once(got);
++	}
++	spi_loop_ok = (e == 0);
++	spi_loop_done = true;
++	printf("A135F TOUCH: SPI loopback %s (err %d, flags %02x, rx %02x %02x %02x %02x)\n",
++	    spi_loop_ok ? "ok" : "FAILED", e, cfg_flags, got[0], got[1], got[2], got[3]);
+ }
+ #endif /* !A135F_TOUCH_TEST */
