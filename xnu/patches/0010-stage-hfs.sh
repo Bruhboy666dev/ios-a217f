@@ -3,7 +3,7 @@
 # dxb runs patches/*.sh from the XNU source root before applying *.patch.
 set -euo pipefail
 
-[[ "${MACHINE_CONFIG:-}" == A135F ]] || exit 0
+[[ "${MACHINE_CONFIG:-}" == A135F || "${MACHINE_CONFIG:-}" == A217F ]] || exit 0
 [[ "${MACOS_VERSION:-}" == 13.5 ]] || {
     echo 'A135F HFS integration requires xnu-8796.141.3 (macOS 13.5)' >&2
     exit 1
@@ -52,4 +52,4 @@ PY
 # Kernel builds use -nostdinc; HFS's kext-config.h needs the SDK's target macros.
 hfs_sdk=$(xcrun --sdk macosx --show-sdk-path)
 cp "$hfs_sdk/usr/include/TargetConditionals.h" bsd/a135f_hfs/
-echo "Staged hfs-627.100.6 ($hfs_sha) for A135F"
+echo "Staged hfs-627.100.6 ($hfs_sha) for A135F/A217F"

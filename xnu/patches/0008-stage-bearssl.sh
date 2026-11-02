@@ -1,7 +1,7 @@
 #!/bin/bash
 # Pinned, portable constant-time AES for the A135F legacy CBC/ECB API.
 set -euo pipefail
-[[ "${MACHINE_CONFIG:-}" == A135F ]] || exit 0
+[[ "${MACHINE_CONFIG:-}" == A135F || "${MACHINE_CONFIG:-}" == A217F ]] || exit 0
 [[ -f libkern/crypto/corecrypto_aes.c ]] || exit 1
 bearssl_sha=7bea48e5e850ab4cafbe68d3765cdaba13a86d6f
 bearssl_tmp=$(mktemp -d)
@@ -42,4 +42,4 @@ for name in ('hash/md5.c', 'codec/dec32le.c', 'codec/enc32le.c',
     shutil.copy2(source / 'src' / name, target / 'src' / name)
 shutil.copy2(source / 'LICENSE.txt', target / 'LICENSE.txt')
 PY
-echo "Staged BearSSL portable AES, MD5, SHA-1 and SHA-384/512 ($bearssl_sha) for A135F"
+echo "Staged BearSSL portable AES, MD5, SHA-1 and SHA-384/512 ($bearssl_sha) for A135F/A217F"

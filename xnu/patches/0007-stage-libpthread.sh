@@ -2,7 +2,7 @@
 # dxb runs patches/*.sh from the XNU source root before applying *.patch.
 set -euo pipefail
 
-[[ "${MACHINE_CONFIG:-}" == A135F ]] || exit 0
+[[ "${MACHINE_CONFIG:-}" == A135F || "${MACHINE_CONFIG:-}" == A217F ]] || exit 0
 [[ "${MACOS_VERSION:-}" == 13.5 ]] || {
     echo 'A135F libpthread integration requires xnu-8796.141.3 (macOS 13.5)' >&2
     exit 1
@@ -62,4 +62,4 @@ PY
 # the provider so local compiles from the uploaded build tree work as well.
 pthread_sdk=$(xcrun --sdk macosx --show-sdk-path)
 cp "$pthread_sdk/usr/include/TargetConditionals.h" bsd/pthread/a135f_libpthread/
-echo "Staged libpthread-514.100.2 ($pthread_sha) for A135F"
+echo "Staged libpthread-514.100.2 ($pthread_sha) for A135F/A217F"
