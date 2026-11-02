@@ -15,6 +15,12 @@ cd "$(dirname "$0")"
 CC=${CC:-aarch64-linux-gnu-gcc}
 OBJCOPY=${OBJCOPY:-aarch64-linux-gnu-objcopy}
 CFLAGS="-O2 -ffreestanding -nostdlib -fno-pic -mgeneral-regs-only -mstrict-align -fno-stack-protector -Wall -Wextra"
+BOARD=${BOARD:-a135f}
+case "$BOARD" in
+	a135f) ;;
+	a217f|a21s) CFLAGS="$CFLAGS -DA21S" ;;
+	*) echo "error: BOARD must be a135f or a217f (got $BOARD)" >&2; exit 2 ;;
+esac
 mkdir -p out
 for f in start.S shim.c console.c fdt.c loader.c; do
 	$CC $CFLAGS -c $f -o out/${f%.*}.o
@@ -40,7 +46,7 @@ fi
 mkdir -p out/uniloader-blobs
 cp out/Image out/uniloader-blobs/Image
 cp out/ramdisk.bin out/uniloader-blobs/ramdisk
-echo "uniLoader blobs: out/uniloader-blobs/{Image,ramdisk} (use your mainline A13 DTB as blob/dtb)"
+echo "uniLoader blobs: out/uniloader-blobs/{Image,ramdisk} (use the matching A13/A21s mainline DTB as blob/dtb)"
 
 # Optional: a stand-alone Android boot.img (only if mkbootimg exists), for bootloaders that load boot.img directly.
 #ref=${2:-}

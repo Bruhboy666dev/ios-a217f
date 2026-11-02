@@ -10,7 +10,7 @@ on:
         description: RELEASE / DEVELOPMENT / DEBUG
         default: DEVELOPMENT
       machine_config:
-        description: xnu MACHINE_CONFIG
+        description: xnu MACHINE_CONFIG (A135F or A217F)
         default: A135F
       keep_going:
         description: make -k (collect all compile errors in one run)
@@ -124,8 +124,15 @@ jobs:
           if-no-files-found: warn
 
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && env.MACHINE_CONFIG == 'A135F' && env.KERNEL_CONFIG == 'DEVELOPMENT'
         with:
           name: kernel-development-a135f
           path: out/kernel.development.a135f
+          if-no-files-found: warn
+
+      - uses: actions/upload-artifact@v4
+        if: always() && env.MACHINE_CONFIG == 'A217F' && env.KERNEL_CONFIG == 'DEVELOPMENT'
+        with:
+          name: kernel-development-a217f
+          path: out/kernel.development.a217f
           if-no-files-found: warn

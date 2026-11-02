@@ -2,8 +2,13 @@
 #include <stdint.h>
 
 #define FB_BASE		0xfa000000UL	/* simple-framebuffer / reserved-memory framebuffer@fa000000 */
+#ifdef A21S
+#define FB_W		720
+#define FB_H		1600
+#else
 #define FB_W		1080
 #define FB_H		2408
+#endif
 #define FB_STRIDE	(FB_W * 4)	/* a8r8g8b8, matches mainline simplefb */
 
 #define RED	0xffff0000U

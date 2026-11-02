@@ -1,7 +1,6 @@
-# Build, package and test (ios-a135f)
+# Build, package and test (ios-a135f / ios-a217f)
 
-Everything below is **untested end to end**: it follows the scripts as written, but nothing here has been run on macOS CI
-or on a phone yet. Commands assume the repo root as the working directory.
+The A13 bring-up is the baseline. The A21s shim and ADT are implemented; an A217F XNU CI build and device boot are still pending. Commands assume the repo root as the working directory.
 
 ## 0. Host prerequisites (Linux)
 
@@ -13,12 +12,13 @@ For the QEMU test also `qemu-system-aarch64` (7.x or newer) and `llvm-nm`.
 
 ```sh
 git init && git add -A && git commit -m ios-a135f && gh repo create ios-a135f --public --source . --push
-gh workflow run xnu.yml                       # inputs: machine_config=A135F (default), kernel_config=DEVELOPMENT
+gh workflow run xnu.yml -f machine_config=A217F -f kernel_config=DEVELOPMENT  # A21s
+# For A13, use: gh workflow run xnu.yml -f machine_config=A135F -f kernel_config=DEVELOPMENT
 gh run watch                                  # first runs will probably fail to compile: read the log, send me the errors
 gh run download <RUN_ID> -n xnu-kernel -D xnu/out
-ls xnu/out/kernel.development.a135f           # the Mach-O the next steps use as $K
+ls xnu/out/kernel.development.a217f           # the Mach-O the next steps use as $K
 ```
-(Public repo = free macOS minutes. The 85 patches in `xnu/patches/` are applied by the workflow.)
+(The workflow applies the ordered Exynos850 patches and A217F profile.)
 
 ## 2. Device tree (Apple ADT)
 
@@ -28,15 +28,24 @@ userland expects it:
 ```sh
 python3 tools/remotezip.py IPSW_URL DeviceTree.d22ap.im4p research/ipsw-x/dt      # iPhone10,3 16.7.x IPSW URL
 ipsw img4 im4p extract research/ipsw-x/dt/Firmware/all_flash/DeviceTree.d22ap.im4p -o research/ipsw-x/d22ap.adt
-python3 tools/mkadt.py shim/out/a135f.adt --touch-fw /path/to/td4375_a13_boe.bin   # mkdir -p shim/out first
+python3 tools/mkadt.py shim/out/a135f.adt --device a135f --touch-fw /path/to/td4375_a13_boe.bin   # mkdir -p shim/out first
 ```
+For the Galaxy A21s (SM-A217F), use `--device a217f`; its upstream 3 GB layout is the default. Select `--ram 4gb` only for a 4 GB device. The generated physical framebuffer is 720×1600 for A21s; iOS identity remains iPhone X so the existing iOS root image can be reused.
 
 ## 3. Payload and shim
 
 ```sh
-K=xnu/out/kernel.development.a135f
-python3 tools/mkpayload.py $K shim/out/a135f.adt shim/out/payload.bin \
-  --cmdline 'debug=0xc serial=3 cpus=1 keepsyms=1 -noprogress rd=mmcroot0 mmcrw=1 rootrw=1 launchd_unsecure_cache=1 wdt=-1'
+K=xnu/out/kernel.development.a217f
+python3 tools/mkadt.py shim/out/a217f.adt --device a217f --ram 3gb
+python3 tools/mkpayload.py $K shim/out/a217f.adt shim/out/payload-a217f.bin \
+  --cmdline 'debug=0xc serial=3 cpus=1 keepsyms=1 -noprogress rd=mmcroot0 mmcrw=1 rootrw=1 launchd_unsecure_cache=1 wdt=-1 a135f_fb_noconsole=1'
+```
+`a135f_fb_noconsole=1` stops XNU console text from drawing over the display after the first GUI swap; text still reaches the persistent log.
+For an existing A13 payload, substitute the A21s ADT without rebuilding the kernel segments:
+
+```sh
+python3 tools/mkadt.py shim/out/a217f.adt --device a217f --ram 3gb
+python3 tools/retarget-payload.py /path/to/a135f-payload.bin shim/out/a217f.adt shim/out/payload-a217f.bin
 ```
 Start with `cpus=1`; raise to `cpus=8` once it boots. Add `a135f_usb=0` / `a135f_touch=0` to isolate hangs.
 
@@ -45,7 +54,8 @@ Start with `cpus=1`; raise to `cpus=8` once it boots. Add `a135f_usb=0` / `a135f
 uniLoader embeds `blob/Image`, `blob/dtb` and `blob/ramdisk` into its own image, so the shim is the "kernel" and the XNU payload is the "ramdisk":
 
 ```sh
-shim/build.sh shim/out/payload.bin          # -> shim/out/uniloader-blobs/{Image,ramdisk}
+BOARD=a135f shim/build.sh shim/out/payload.bin          # -> shim/out/Image and ramdisk.bin
+BOARD=a217f shim/build.sh shim/out/payload-a217f.bin    # 720×1600 A21s shim image
 cp shim/out/uniloader-blobs/Image   /path/to/uniLoader/blob/Image
 cp shim/out/uniloader-blobs/ramdisk /path/to/uniLoader/blob/ramdisk
 cp /path/to/your/a13-linux.dtb      /path/to/uniLoader/blob/dtb       # the DTB you already boot Linux with
@@ -54,6 +64,15 @@ cp /path/to/your/a13-linux.dtb      /path/to/uniLoader/blob/dtb       # the DTB 
 way you do for Linux (arm64 board config for the A13, `PAYLOAD_ENTRY`/`RAMDISK_ENTRY` as for Linux, libfdt on) and flash
 the resulting boot image exactly as you flash your Linux one. The shim needs `/chosen/linux,initrd-start/-end` in the DTB
 uniLoader hands over (the same mechanism Linux uses for its initramfs). The payload must fit your `boot` partition.
+
+For the A21s, use the Linux DTB already configured in uniLoader. Leave the supplied aik-son1 DTB and kernel offset unchanged.
+After building uniLoader, package it with the existing aik-son1 settings:
+
+    cp -r ./uniLoader ../aik-son1/split_img/boot.img-kernel
+    cd ../aik-son1/
+    ./repackimg.sh
+
+The repack uses the existing aik-son1 ramdisk directory and settings.
 
 (Stock Samsung bootloader instead, if `mkbootimg` is installed: `shim/build.sh shim/out/payload.bin /path/to/working/boot.img`
 also makes `shim/out/a135f-boot.img` + `AP_a135f.tar.md5` for Odin/Heimdall.)

@@ -1,4 +1,4 @@
-# Porting notes: sweet (SM7150) -> A13 (Exynos850)
+# Porting notes: sweet -> A13 and A21s (Exynos850)
 
 ## Verified (on a Linux box, no hardware)
 - xnu-8796.141.3 + the blacktop build-script edits + staged libpthread/HFS sources: all 81 original patches apply.
@@ -26,3 +26,18 @@ Everything that needs compiling XNU (macOS) or a phone: all of 0082-0084, `shim/
 4. USB (0085): verify PHY/clock bring-up; try `a135f_usb=1` (report only) first if the kernel hangs.
 5. Fuel gauge (MAX1726x over I2C) and S2MPU12 power key / PMIC (ACPM mailbox).
 6. Optionally bring up the A55 DVFS/idle, and a real power-off path.
+
+## A21s profile
+
+- The supplied A21s DTB identifies samsung,a217f / samsung,exynos850, eight
+  Cortex-A55 cores, GIC-400, DW-MSHC at 0x12100000, Mali-G52 at 0x11500000,
+  and an OVT TD4150 touchscreen. These match the shared SoC drivers. The
+  generated A21s ADT keeps the samsung,a135f compatibility string required by
+  the existing XNU platform expert while retaining the A21s ID.
+- Its memory nodes total 3 GiB, with a contiguous 1 GiB high bank at
+  0x880000000; mkadt.py --device a217f --ram 3gb uses that bank.
+- A217F is a separate XNU build profile mapped to the shared Exynos850 board
+  macros. It does not change the A13 profile.
+- Requires an A217F XNU CI build and phone boot to validate CPU bring-up,
+  storage, framebuffer and userland timing. Do not inject the A13 touch
+  firmware into A21s; use its own verified firmware if touch is enabled.

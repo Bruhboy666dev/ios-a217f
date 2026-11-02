@@ -99,7 +99,11 @@ void shim_main(uint64_t dtb)
 	a13_init();
 	stage = "loader";
 	con_clear(RED);
+#ifdef A21S
+	con_str("SHIM", "a217f: xnu loader (Exynos850)");
+#else
 	con_str("SHIM", "a135f: xnu loader (Exynos850)");
+#endif
 	con_skip();
 	con_hex2("BOOT", "el=", (uint32_t)shim_entry_el, "mpidr=", (uint32_t)rsr("mpidr_el1"));
 	con_hex2("TIMER", "cntfrq=", (uint32_t)rsr("cntfrq_el0"), "dtb=", (uint32_t)dtb);

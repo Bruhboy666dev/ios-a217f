@@ -1,25 +1,25 @@
-# ios-a135f
+# ios-a217f / ios-a135f
 
-**iOS 16 on a Samsung Galaxy A13 (SM-A135F)**
+**iOS 16 on Samsung Galaxy A13 (SM-A135F) and Galaxy A21s (SM-A217F)**
 
 ## Hardware status
 
-| Area | A13 (Exynos850) | State |
+| Area | Device details | State |
 | --- | --- | --- |
-| Cores | 8x Cortex-A55; MPIDR `0x000-3`, `0x100-3`; PSCI | Working |
-| Interrupts | GIC-400 = **GICv2**; timer INTID 27; MMIO `GICC_IAR` / `GICC_EOIR`; IPIs via `GICD_SGIR` | Working |
-| Timer | 26 MHz (ADT `timebase-frequency`) | Working |
-| RAM | 2 GiB block at `0x880000000` | Working (todo: 3gb/4gb) |
-| Display | Simple framebuffer, 1080x2408 at `0xfa000000` | Working |
-| Storage | Exynos DWMMC driver; root `rd=mmcroot0` | Working |
-| Boot | SBOOT / uniLoader; shim flashed to `boot`, including EL2-to-EL1 transition; preferrably via Fastboot | Working |
+| Cores | A13 and A21s: 8x Cortex-A55; MPIDR `0x000-3`, `0x100-3`; PSCI | A13 bring-up; A21s profile added |
+| Interrupts | A13 and A21s: GIC-400 = **GICv2**; timer INTID 27; MMIO `GICC_IAR` / `GICC_EOIR`; IPIs via `GICD_SGIR` | A13 bring-up; A21s profile added |
+| Timer | Both: 26 MHz (ADT `timebase-frequency`) | A13 bring-up; A21s profile added |
+| RAM | Both use top bank at `0x880000000`; A21s defaults to the upstream 3 GB profile | A13 bring-up; A21s profile added |
+| Display | A13: 1080x2408; A21s: 720x1600; both at `0xfa000000` | A13 bring-up; A21s profile added |
+| Storage | Exynos DWMMC driver; root `rd=mmcroot0` | A13 bring-up; A21s profile added |
+| Boot | SBOOT / uniLoader; A21s uses the A21s uniLoader board config | A13 bring-up; A21s image built, not device-tested |
 | Keys | Volume up/down on GPIO `gpa0-7` / `gpa1-0`, both pressed together is power | Working |
 | power key | power button on PMIC interrupts | not implemented |
 | Fuelgauge | Maxim Max1726x | Not implemented |
 | Touch | OVT TD4150 firmware embedded in ADT via `mkadt.py --touch-fw`, seems like theres an issue there though. | WIP |
 | USB | DWC3 USB | Working |
 | Display Enable | `DECON_F` (`0x13060000`) + `0x70 = 0x1281`; written by shim and kernel | Working |
-| GPU | Mali-G52 | Not implemented |
+| GPU | Mali-G52 | Experimental kernel core and userland; display integration not verified |
 | Audio | ABOX audio | Not implemented |
 | Wi-Fi | Samsung S612 | Not implemented |
 | Bluetooth | Part of Wi-Fi | Not implemented |
@@ -34,24 +34,14 @@
 
 ## How to use it
 
-1. **Kernel:** fork the repo and run the `xnu` workflow (`gh workflow run xnu.yml -R YOU/ios-a135f`), then
-   `gh run download RUN_ID -n kernel-development-a135f -D xnu/out`. Expect compile errors on the first runs (`keep_going` collects them all).
-2. 
-```
-tools/ios-create-root-full.sh <url_to_ipsw or path/to/ipsw>
-```
+1. Kernel: run the xnu workflow with machine_config=A217F for A21s or A135F for A13. Download the matching kernel-development-a217f or kernel-development-a135f artifact to xnu/out.
+2. Root filesystem:
 
+    tools/ios-create-root-full.sh <url_to_ipsw or path/to/ipsw>
 
-# Todo: REWRITE
-1. **Payload and blobs:**
-   ```sh
-   python3 tools/mkadt.py shim/out/a135f.adt --touch-fw /path/to/td4375_a13_boe.bin   # vendor TCM image you load on Linux
-   python3 tools/mkpayload.py xnu/out/kernel.development.a135f shim/out/a135f.adt shim/out/payload.bin \
-       --cmdline 'debug=0xc serial=3 cpus=8 keepsyms=1 -noprogress rd=mmcroot0 mmcrw=1 rootrw=1 launchd_unsecure_cache=1 wdt=-1 a135f_fb_noconsole=1 a135f_fb_hz=30'
-   shim/build.sh out/payload.bin      # needs aarch64-linux-gnu-gcc/binutils; -> shim/out/uniloader-blobs/{Image,ramdisk}
-   ```
-2. **Logs:** the kernel keeps a 4 MiB console ring at the end of `userdata`; read it from recovery/pmOS with
-   `tools/a135f-log-pull.sh`. The shim also paints a status/panic screen on the framebuffer.
+3. For A21s, generate the ADT with tools/mkadt.py --device a217f --ram 3gb and build the shim with BOARD=a217f. Keep A13 touch firmware out of the A21s ADT unless verified for this panel.
+
+See docs/PORTING-NOTES.md for the hardware comparison and remaining validation work.
 
 ## QEMU Usage
 ```

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Build the minimal Apple Device Tree that the A135F xnu needs to boot.
+"""Build the minimal Apple Device Tree that the Exynos850 XNU port needs.
 
-Target: Samsung Galaxy A13 (SM-A135F), Exynos850. Only what the early boot
-path actually reads; every MMIO address comes from the mainline
-exynos850.dtsi / A13 device tree. Usage:  mkadt.py OUT.adt [--dump] [--qemu] [--ram 3gb|4gb] [--touch-fw FILE]
+Targets: Samsung Galaxy A13 (SM-A135F) and A21s (SM-A217F), Exynos850. Only what the early boot
+path actually reads; MMIO addresses come from the mainline Exynos850 tree.
+Usage: mkadt.py OUT.adt [--device a135f|a217f] [--dump] [--qemu] [--ram 3gb|4gb] [--touch-fw FILE]
 """
 import hashlib, os, struct, sys
 
@@ -14,16 +14,21 @@ import adt  # noqa: E402
 # memory node). The low banks (0x80000000.., 0xc0000000.., 0xe0d00000..) are
 # left alone: the shim and the eMMC DMA window (0xc8000000, see /a135f-mmc) use them.
 PHYS_BASE = 0x880000000
-# RAM variants (last <reg> entry of the memory node in the board dts):
-#   3gb: exynos850-a135f-3gb.dts  <0x8 0x80000000 0x0 0x40000000>  -> 1 GiB
-#   4gb: exynos850-a135f-4gb.dts  <0x8 0x80000000 0x0 0x80000000>  -> 2 GiB
+# RAM variants (kernel-managed high bank; the upstream A21s tree defaults to 3 GB):
+#   3gb: <0x8 0x80000000 0x0 0x40000000> -> 1 GiB
+#   4gb: <0x8 0x80000000 0x0 0x80000000> -> 2 GiB
 RAM_VARIANTS = {'3gb': 0x40000000, '4gb': 0x80000000}
 RAM_DEFAULT = '3gb'
+DEVICE = os.environ.get('EXYNOS850_DEVICE', 'a135f')
+if '--device' in sys.argv:
+    DEVICE = sys.argv[sys.argv.index('--device') + 1].lower()
+if DEVICE not in ('a135f', 'a217f'):
+    sys.exit('--device must be one of: a135f, a217f')
 
 
 def ram_variant():
-    """--ram 3gb|4gb or $A135F_RAM (default 3gb)."""
-    v = os.environ.get('A135F_RAM', RAM_DEFAULT)
+    """--ram 3gb|4gb or $EXYNOS850_RAM (default 3gb)."""
+    v = os.environ.get('EXYNOS850_RAM', os.environ.get('A135F_RAM', RAM_DEFAULT))
     if '--ram' in sys.argv:
         v = sys.argv[sys.argv.index('--ram') + 1]
     if v not in RAM_VARIANTS:
@@ -41,10 +46,14 @@ SOC_BASE = 0x10000000
 # ARM GIC-400 (GICv2): distributor 0x12a01000, CPU interface 0x12a02000
 GICD, GICD_SIZE = 0x12a01000, 0x1000
 GICC, GICC_SIZE = 0x12a02000, 0x2000
-# simple-framebuffer left by the bootloader: 1080x2408 a8r8g8b8
-FB, FB_SIZE = 0xfa000000, 0xa00000
-A135F_ECID = 0x4131333546000001  # 'A135F' + 1, synthetic
-FB_W, FB_H, FB_STRIDE = 1080, 2408, 1080 * 4
+# simple-framebuffer left by the bootloader: A13 1080x2408; A21s 720x1600
+FB = 0xfa000000
+FB_W, FB_H = (720, 1600) if DEVICE == 'a217f' else (1080, 2408)
+FB_STRIDE = FB_W * 4
+FB_SIZE = (FB_W * FB_H * 4) if DEVICE == 'a217f' else 0xa00000
+A135F_ECID = 0x4131333546000001  # synthetic; not a hardware identifier
+A217F_ECID = 0x4132313746000001  # synthetic; not a hardware identifier
+DEVICE_ECID = A217F_ECID if DEVICE == 'a217f' else A135F_ECID
 # Internal eMMC: DW-MSHC mmc_0 (bsd/dev/a135f_mmc.c); DMA window below 4 GiB, unmanaged by xnu
 MMC, MMC_SIZE = 0x12100000, 0x2000
 MMC_DMA_BASE = 0xc8000000
@@ -138,8 +147,8 @@ def build(seed=None, qemu=False, highmem=True):
         ('dram-size', u64(mem_size)),
         ('random-seed', seed),
         ('debug-enabled', u32(1)),
-        ('firmware-version', cstr('a135f-shim')),
-        ('system-firmware-version', cstr('a135f-shim')),
+        ('firmware-version', cstr(DEVICE + '-shim')),
+        ('system-firmware-version', cstr(DEVICE + '-shim')),
         # iBoot's SHA-384 of the boot manifest; /sbin/mount -P 1 exits unless
         # it exists (bind mounts /private/preboot/<hex>/usr/standalone/firmware,
         # tolerating a missing directory). Fixed stand-in value.
@@ -157,7 +166,7 @@ def build(seed=None, qemu=False, highmem=True):
         # files), so e.g. DataMigration never records LastSystemVersion and
         # migrates on every boot. Synthetic ECID (not the phone's); chip-id
         # of the A11 that the iPhone X userland expects.
-        ('unique-chip-id', struct.pack('<Q', A135F_ECID)),
+        ('unique-chip-id', struct.pack('<Q', DEVICE_ECID)),
         ('chip-id', u32(0x8015)),
         # Security status as on a dev-fused, undemoted board (tuple 0,0,1,1):
         # MobileGestalt reads these from /chosen, and mobileactivationd's
@@ -255,7 +264,7 @@ def build(seed=None, qemu=False, highmem=True):
 
     # bsd/dev/a135f_touch.c: TD4150 zeroflash application firmware (raw ROMBOOT_APP_CODE area)
     touch_nodes = []
-    fw = load_touch_firmware()
+    fw = load_touch_firmware() if DEVICE == 'a135f' else None
     if fw and not qemu:
         touch_nodes = [node('a135f-touch', [
             ph(),
@@ -284,9 +293,12 @@ def build(seed=None, qemu=False, highmem=True):
     # Identity of the iPhone X whose userland runs here: compatible[0] is
     # hw.model/hw.target (D22AP), model is hw.machine/hw.product
     # (iPhone10,3). 'samsung,a135f' stays for A135FPlatformExpert matching.
+    board_compatible = (cstr('samsung,a217f') + cstr('samsung,a135f')
+                        if DEVICE == 'a217f' else cstr('samsung,a135f'))
     return node('device-tree', [
         ph(),
-        ('compatible', cstr('D22AP') + cstr('iPhone10,3') + cstr('samsung,a135f') + cstr('samsung,exynos850') + cstr('AppleARM')),
+        ('compatible', cstr('D22AP') + cstr('iPhone10,3') +
+                       board_compatible + cstr('samsung,exynos850') + cstr('AppleARM')),
         ('model', cstr('iPhone10,3')),
         ('target-type', cstr('D22')),
         ('target-sub-type', cstr('D22AP')),
@@ -302,4 +314,4 @@ if __name__ == '__main__':
     open(sys.argv[1], 'wb').write(blob)
     if '--dump' in sys.argv:
         adt.dump(adt.parse(blob)[0])
-    print(f'{sys.argv[1]}: {len(blob)} bytes, RAM {ram_variant()} (0x{PHYS_BASE:x} + 0x{MEM_SIZE:x})', file=sys.stderr)
+    print(f'{sys.argv[1]}: {len(blob)} bytes, {DEVICE}, RAM {ram_variant()} (0x{PHYS_BASE:x} + 0x{MEM_SIZE:x})', file=sys.stderr)
