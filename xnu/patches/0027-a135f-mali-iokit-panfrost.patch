@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..79a2c09
 --- /dev/null
 +++ b/iokit/Kernel/arm/A135FMali.cpp
-@@ -0,0 +1,481 @@
+@@ -0,0 +1,483 @@
 +/*
 + * A135FMali: the Galaxy A13's Mali-G52 for programs to draw with.
 + *
@@ -28,7 +28,9 @@ index 0000000..79a2c09
 +#include <IOKit/IOBufferMemoryDescriptor.h>
 +#include <mach/vm_param.h>
 +#include <sys/systm.h>
++extern "C" {
 +#include <arm/caches_internal.h>
++}
 +
 +#include "A135FSurface.h"
 +
