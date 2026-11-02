@@ -6,7 +6,7 @@ index f0c8a72..237bc82 100644
  CFLAGS+= -include meta_features.h -DLIBKERN_KERNEL_PRIVATE -DOSALLOCDEBUG=1
  SFLAGS+= -include meta_features.h
  
-+ifeq ($(CURRENT_MACHINE_CONFIG),A135F)
++ifneq ($(filter A135F A217F,$(CURRENT_MACHINE_CONFIG)),)
 +A135F_AES_ROOT = $(SRCROOT)/libkern/crypto/a135f_bearssl
 +A135F_AES_INC = -I$(A135F_AES_ROOT)/inc -I$(A135F_AES_ROOT)/src
 +a135f_aes.o_INCFLAGS = $(A135F_AES_INC)

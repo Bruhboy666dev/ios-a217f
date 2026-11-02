@@ -24,18 +24,18 @@ shutil.copytree(source / 'inc', target / 'inc')
 (target / 'src/symcipher').mkdir(parents=True)
 for file in ('inner.h', 'config.h'):
     shutil.copy2(source / 'src' / file, target / 'src' / file)
+# XNU exports machine/limits.h instead of the userspace limits.h.
+header = target / 'src/inner.h'
+text = header.read_text()
+assert text.count('#include <limits.h>') == 1
+text = text.replace('#include <limits.h>', '#include <machine/limits.h>')
+header.write_text(text)
 for directory in ('symcipher', 'hash', 'codec'):
     nested = target / 'src' / directory
     nested.mkdir(parents=True, exist_ok=True)
     for file in ('inner.h', 'config.h'):
         shutil.copy2(target / 'src' / file, nested / file)
-# XNU exports machine/limits.h instead of the userspace limits.h.
-header = target / 'src/inner.h'
-text = header.read_text()
-assert text.count('#include <limits.h>') == 1
-header.write_text(text.replace('#include <limits.h>',
-    '#if defined(KERNEL)\n#include <machine/limits.h>\n'
-    '#else\n#include <limits.h>\n#endif'))
+
 for name in ('aes_ct', 'aes_ct_enc', 'aes_ct_dec', 'aes_ct_cbcenc', 'aes_ct_cbcdec'):
     shutil.copy2(source / 'src/symcipher' / (name + '.c'),
                  target / 'src/symcipher' / (name + '.c'))
