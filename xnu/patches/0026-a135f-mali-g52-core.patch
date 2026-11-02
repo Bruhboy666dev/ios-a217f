@@ -15,7 +15,7 @@ new file mode 100644
 index 0000000..0c246a4
 --- /dev/null
 +++ b/bsd/dev/a135f_mali.c
-@@ -0,0 +1,705 @@
+@@ -0,0 +1,706 @@
 +/*
 + * The Mali-G52 of the Galaxy A13/Exynos850, brought up from the kernel. Opt-in: boot-arg
 + * a135f_mali=1 (a GPU register read with its power domain or clock off hangs the bus, so nothing
@@ -55,6 +55,7 @@ index 0000000..0c246a4
 +#include <machine/machine_routines.h>
 +#include <arm/caches_internal.h>
 +#include <vm/pmap.h>
++#include <arm/pmap.h>
 +#include <vm/vm_kern.h>
 +#include <pexpert/pexpert.h>
 +

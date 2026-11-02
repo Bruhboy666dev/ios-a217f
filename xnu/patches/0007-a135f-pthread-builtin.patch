@@ -7,7 +7,7 @@ index 4b83160..6ab431e 100644
  SFLAGS+= -include meta_features.h
  
 +# This provider is built into A135F; other boards use their normal kext.
-+ifeq ($(CURRENT_MACHINE_CONFIG),A135F)
++ifneq ($(filter A135F A217F,$(CURRENT_MACHINE_CONFIG)),)
 +A135F_PTHREAD_ROOT = $(SRCROOT)/bsd/pthread/a135f_libpthread
 +A135F_PTHREAD_INC = -I$(A135F_PTHREAD_ROOT) -I$(A135F_PTHREAD_ROOT)/private -I$(A135F_PTHREAD_ROOT)/include
 +a135f_pthread_init.o_INCFLAGS = $(A135F_PTHREAD_INC)

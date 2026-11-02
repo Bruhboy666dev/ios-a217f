@@ -24,6 +24,11 @@ shutil.copytree(source / 'inc', target / 'inc')
 (target / 'src/symcipher').mkdir(parents=True)
 for file in ('inner.h', 'config.h'):
     shutil.copy2(source / 'src' / file, target / 'src' / file)
+for directory in ('symcipher', 'hash', 'codec'):
+    nested = target / 'src' / directory
+    nested.mkdir(parents=True, exist_ok=True)
+    for file in ('inner.h', 'config.h'):
+        shutil.copy2(target / 'src' / file, nested / file)
 # XNU exports machine/limits.h instead of the userspace limits.h.
 header = target / 'src/inner.h'
 text = header.read_text()

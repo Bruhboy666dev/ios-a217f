@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..79a2c09
 --- /dev/null
 +++ b/iokit/Kernel/arm/A135FMali.cpp
-@@ -0,0 +1,480 @@
+@@ -0,0 +1,481 @@
 +/*
 + * A135FMali: the Galaxy A13's Mali-G52 for programs to draw with.
 + *
@@ -23,6 +23,7 @@ index 0000000..79a2c09
 +#include <IOKit/IOLib.h>
 +#include <IOKit/IOLocks.h>
 +#include <IOKit/IOService.h>
++#include <IOKit/IOKitKeys.h>
 +#include <IOKit/IOUserClient.h>
 +#include <IOKit/IOBufferMemoryDescriptor.h>
 +#include <mach/vm_param.h>
@@ -123,7 +124,7 @@ index 0000000..79a2c09
 +void
 +A135FMaliStart(void)
 +{
-+	IOService * provider = IOService::getPlatform();
++	IOService * provider = IOService::getServiceRoot();
 +	A135FMali * gpu;
 +
 +	gMaliLock = IOLockAlloc();
