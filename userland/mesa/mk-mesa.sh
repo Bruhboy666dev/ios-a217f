@@ -76,7 +76,7 @@ ninja -C $BUILD > ninja.log
 
 O=$HERE/out
 llvm-strip -x -o $O/libOSMesa.8.dylib $BUILD/src/gallium/targets/osmesa/libOSMesa.8.dylib
-install_name_tool -id /usr/local/lib/a135f/libOSMesa.8.dylib $O/libOSMesa.8.dylib
-nm -gU $O/libOSMesa.8.dylib | awk '$3 ~ /^_gl/ { print substr($3, 2) }' > $O/exported-gl.txt
+${INSTALL_NAME_TOOL:-llvm-install-name-tool} -id /usr/local/lib/a135f/libOSMesa.8.dylib $O/libOSMesa.8.dylib
+${NM:-llvm-nm} -gU $O/libOSMesa.8.dylib | awk '$3 ~ /^_gl/ { print substr($3, 2) }' > $O/exported-gl.txt
 cp mesa-$VERSION/src/mapi/glapi/registry/gl.xml $O/gl.xml
 echo "mk-mesa.sh: Mesa $VERSION ($DRIVERS): $O/libOSMesa.8.dylib, $(stat -c %s $O/libOSMesa.8.dylib) bytes, $(wc -l < $O/exported-gl.txt) gl* functions"

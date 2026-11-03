@@ -156,11 +156,9 @@ def build(seed=None, qemu=False, highmem=True):
         # libimg4 (cryptexd) aborts "failed to get crypto algorithm" without
         # it; real A11+ device trees say sha2-384.
         ('crypto-hash-method', cstr('sha2-384')),
-        # MobileGestalt's screen class: display-scale (u32, default 0) comes
-        # from /chosen, the pixel size from IOMobileFramebuffer. Scale 0 makes
-        # SpringBoard's FBSDisplayMode "infxinf@0x" invalid. 1080x2400 @3x =
-        # 360x800 points (like iPhone X class devices).
-        ('display-scale', u32(3)),
+        # Match the physical panel when native display mode is requested:
+        # A21s is 720x1600 at 2x (360x800 points); A13 remains 1080x2408 at 3x.
+        ('display-scale', u32(2 if DEVICE == 'a217f' else 3)),
         # XNU derives IOPlatformUUID (gethostuuid) from these on arm; without
         # them CFPreferences cannot use kCFPreferencesCurrentHost (no ByHost
         # files), so e.g. DataMigration never records LastSystemVersion and
@@ -241,8 +239,8 @@ def build(seed=None, qemu=False, highmem=True):
             ph(),
             ('device_type', cstr('display-subsystem')),
             ('compatible', cstr('a135f,display')),
-            ('canvas-width', u32(1125)),
-            ('canvas-height', u32(2436)),
+            ('canvas-width', u32(FB_W if DEVICE == 'a217f' else 1125)),
+            ('canvas-height', u32(FB_H if DEVICE == 'a217f' else 2436)),
         ])])
 
     fbcon = node('a135f-fbcon', [
@@ -264,7 +262,8 @@ def build(seed=None, qemu=False, highmem=True):
 
     # bsd/dev/a135f_touch.c: TD4150 zeroflash application firmware (raw ROMBOOT_APP_CODE area)
     touch_nodes = []
-    fw = load_touch_firmware() if DEVICE == 'a135f' else None
+    # A21s uses the same TD4150 driver but must provide its own firmware.
+    fw = load_touch_firmware() if DEVICE == 'a135f' or '--touch-fw' in sys.argv or os.environ.get('A135F_TOUCH_FW') else None
     if fw and not qemu:
         touch_nodes = [node('a135f-touch', [
             ph(),

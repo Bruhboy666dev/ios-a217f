@@ -1,0 +1,42 @@
+diff --git a/bsd/dev/a135f_touch.c b/bsd/dev/a135f_touch.c
+--- a/bsd/dev/a135f_touch.c
++++ b/bsd/dev/a135f_touch.c
+@@ -196,8 +196,13 @@
+ #define APP_MAX_OBJECTS 36
+ #define APP_LEN         38
+ 
++#if defined(A217F)
++#define PANEL_W         720
++#define PANEL_H         1600
++#else
+ #define PANEL_W         1080
+ #define PANEL_H         2408
++#endif
+ 
+ #define TOUCH_TRIES     5
+ 
+diff --git a/iokit/Kernel/arm/hid/A135FHID.cpp b/iokit/Kernel/arm/hid/A135FHID.cpp
+--- a/iokit/Kernel/arm/hid/A135FHID.cpp
++++ b/iokit/Kernel/arm/hid/A135FHID.cpp
+@@ -431,10 +431,15 @@ A135FHIDTouch::start(IOService *provider)
+ 	if (!fLock || !IOHIDEventService::start(provider)) {
+ 		return false;
+ 	}
+ 	int native = 0;
+ 	PE_parse_boot_argn("a135f_fb_native", &native, sizeof(native));
+-	fLogicalW = native ? 1080 : 1125;
+-	fLogicalH = native ? 2400 : 2436;
+-	fOffX = (fLogicalW - 1080) / 2;
+-	fOffY = (fLogicalH - 2400) / 2;
++	int panelW = 1080, panelH = 2400;
++#if defined(A217F)
++	panelW = 720;
++	panelH = 1600;
++#endif
++	fLogicalW = native ? panelW : 1125;
++	fLogicalH = native ? panelH : 2436;
++	fOffX = (fLogicalW - panelW) / 2;
++	fOffY = (fLogicalH - panelH) / 2;
+ 	/* The digitizer covers the main display (backboardd maps it 1:1). */
+ 	setProperty("DisplayIntegrated", kOSBooleanTrue);
+ 	setProperty("SurfaceWidth", (unsigned long long)(68 << 16), 32);	/* mm, 16.16 */

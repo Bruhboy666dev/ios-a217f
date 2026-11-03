@@ -36,11 +36,15 @@ For the Galaxy A21s (SM-A217F), use `--device a217f`; its upstream 3 GB layout i
 
 ```sh
 K=xnu/out/kernel.development.a217f
-python3 tools/mkadt.py shim/out/a217f.adt --device a217f --ram 3gb
+python3 tools/mkadt.py shim/out/a217f.adt --device a217f --ram 3gb --touch-fw /path/to/td4150_a21s.bin
 python3 tools/mkpayload.py $K shim/out/a217f.adt shim/out/payload-a217f.bin \
-  --cmdline 'debug=0xc serial=3 cpus=1 keepsyms=1 -noprogress rd=mmcroot0 mmcrw=1 rootrw=1 launchd_unsecure_cache=1 wdt=-1 a135f_fb_noconsole=1'
+  --cmdline 'debug=0xc serial=3 cpus=1 keepsyms=1 -noprogress rd=mmcroot0 mmcrw=1 rootrw=1 launchd_unsecure_cache=1 wdt=-1 a135f_fb_noconsole=1 a135f_fb_native=1 a135f_mali=1 a135f_fb_hz=60'
 ```
 `a135f_fb_noconsole=1` stops XNU console text from drawing over the display after the first GUI swap; text still reaches the persistent log.
+The a135f_fb_native=1 boot argument selects the A21s panel's native 720x1600 mode; the A21s ADT advertises 2x scale (360x800 points). The 0030-a217f-native-panel-size.patch maps touch coordinates to that same panel. a135f_mali=1 enables the kernel GPU; add a135f_gl=1 only after building userland/out and installing it into the rootfs with tools/a135f-root-tweaks.py ROOT --gl userland/out.
+
+Linux userland and Mesa build instructions are in [userland/BUILD-LINUX.md](../userland/BUILD-LINUX.md).
+
 For an existing A13 payload, substitute the A21s ADT without rebuilding the kernel segments:
 
 ```sh

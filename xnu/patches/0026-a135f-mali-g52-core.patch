@@ -12,18 +12,18 @@ index ce36307..82139e7 100644
  bsd/dev/munge.c 			optional config_requires_u32_munging
 diff --git a/bsd/dev/a135f_mali.c b/bsd/dev/a135f_mali.c
 new file mode 100644
-index 0000000..0c246a4
+index 0000000..c82fa2d
 --- /dev/null
 +++ b/bsd/dev/a135f_mali.c
-@@ -0,0 +1,708 @@
+@@ -0,0 +1,756 @@
 +/*
-+ * The Mali-G52 of the Galaxy A13/Exynos850, brought up from the kernel. Opt-in: boot-arg
++ * The Mali-G52 of the Galaxy A13 (Exynos850), brought up from the kernel. Opt-in: boot-arg
 + * a135f_mali=1 (a GPU register read with its power domain or clock off hangs the bus, so nothing
 + * here runs by default).
 + *
-+ * Bifrost driver for Exynos850
-+ * Everything from the GPU's soft reset on is Bifrost's and is the same. Only the way the block
-+ * gets power, done like Linux does it on e850
++ * Panfrost/Bifrost driver for Mali-G52 (Exynos850)
++ * everything from the GPU's soft reset on is Bifrost's and is the same. Only the way the block
++ * gets power and a clock differs, done here like Linux does it:
 + *
 + *   1  CMU_TOP: the "g3d switch" clock (mux, divider, gate), drivers/clk/samsung/clk-exynos850.c
 + *   2  PMU: the G3D power domain (drivers/soc/samsung/pm_domains.c: PD_G3D at PMU + 0x1d00,
@@ -34,8 +34,8 @@ index 0000000..0c246a4
 + *   5  one job -- write a value into memory -- in identity mode, then
 + *   6  the same job through the GPU's own page tables
 + *
-+ * The GPU's supply (buck2, "mali-supply") is a dummy regulator here: uniLoader leaves it on.
-+ * No interrupts: jobs are polled (the DT has job/mmu/gpu SPIs 126/127/125 for a later driver).
++ * GPU supplies are left as dummy regs here, as i turn them on manually in uniLoader
++ * due to it being reliable and simple to do, and is an easy workaround for no reg control present.
 + * Jobs run to their end before the submit call returns (one address space, one job at a time).
 + *
 + * sysctl kern.a135f_mali says how far it got: 6 means every step worked.
@@ -55,13 +55,11 @@ index 0000000..0c246a4
 +#include <machine/machine_routines.h>
 +#include <arm/caches_internal.h>
 +#include <vm/pmap.h>
-+#include <arm/pmap_public.h>
 +#include <vm/vm_kern.h>
 +#include <pexpert/pexpert.h>
 +
 +extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
-+extern pmap_paddr_t kvtophys(vm_offset_t);
-+extern vm_map_address_t phystokv(pmap_paddr_t);
++extern ppnum_t pmap_find_phys(pmap_t pmap, addr64_t va);
 +extern kern_return_t thread_terminate(thread_t);
 +extern kern_return_t kernel_thread_start(thread_continue_t, void *, thread_t *);
 +extern void A135FMaliStart(void);       /* iokit/Kernel/arm/A135FMali.cpp */
@@ -76,6 +74,7 @@ index 0000000..0c246a4
 +uint32_t a135f_mali_submit(uint64_t chain, bool fragment);
 +uint64_t a135f_mali_run(uint64_t chain, bool fragment, uint32_t *status);
 +void a135f_mali_tag(uint64_t address, uint32_t kind);
++void a135f_mali_flush(uint64_t va, uint64_t len);
 +
 +#define PMU_PA          0x11860000u
 +#define PMU_PD_G3D      0x1d00          /* CONF; STATUS at +4 */
@@ -133,6 +132,22 @@ index 0000000..0c246a4
 +		delay(10);
 +	}
 +	return (rd(base, at) & mask) == want;
++}
++
++/* kernel virtual address -> physical (pmap_find_phys, as the USB driver does) */
++static uint64_t
++va_to_pa(vm_offset_t va)
++{
++	ppnum_t pn = pmap_find_phys(kernel_pmap, (addr64_t)va);
++
++	return ((uint64_t)pn << PAGE_SHIFT) | ((uint64_t)va & PAGE_MASK);
++}
++
++/* clean + invalidate the data cache over a kernel virtual range (flush_dcache64: libkern.h) */
++static void
++flush_va(vm_offset_t va, size_t len)
++{
++	flush_dcache64((addr64_t)va, (unsigned)len, 0);
 +}
 +
 +/* ---- clocks and power ---- */
@@ -266,7 +281,7 @@ index 0000000..0c246a4
 +	job[9] = (uint32_t)((gpu + 0x800) >> 32);
 +	job[10] = 6;                            /* a 32-bit immediate */
 +	job[12] = 0xc0ffee01u;
-+	FlushPoC_DcacheRegion(page, PAGE_SIZE);
++	flush_va(page, PAGE_SIZE);
 +
 +	wr(mali, JOB_INT_MASK, 0);
 +	wr(mali, JOB_INT_CLEAR, 0xffffffffu);
@@ -278,7 +293,7 @@ index 0000000..0c246a4
 +	wr(mali, JS1 + JS_COMMAND_NEXT, 1);
 +	(void)wait_for(mali, JOB_INT_RAWSTAT, (1u << 1) | (1u << 17), 1u << 1, 100);
 +
-+	FlushPoC_DcacheRegion(page, PAGE_SIZE);
++	flush_va(page, PAGE_SIZE);
 +	ok = *target == 0xc0ffee01u;
 +	printf("a135f mali: %s: interrupts %#x, slot status %#x, MMU fault %#x, job status %#x, the word %#x%s\n", what,
 +	    rd(mali, JOB_INT_RAWSTAT), rd(mali, JS1 + JS_STATUS), rd(mali, AS0 + AS_FAULTSTATUS), job[0], *target,
@@ -316,12 +331,6 @@ index 0000000..0c246a4
 +static uint64_t *pt_top;
 +static uint64_t pt_top_phys;
 +
-+static uint64_t
-+va_to_pa(vm_offset_t va)
-+{
-+	return kvtophys(va);
-+}
-+
 +static uint64_t *
 +pt_page(uint64_t *phys)
 +{
@@ -331,43 +340,81 @@ index 0000000..0c246a4
 +		return NULL;
 +	}
 +	*phys = va_to_pa(page);
-+	FlushPoC_DcacheRegion(page, PAGE_SIZE);
++	flush_va(page, PAGE_SIZE);
 +	return (uint64_t *)page;
 +}
 +
-+static uint64_t *
-+pt_below(uint64_t *entry)
++/*
++ * The tables' own virtual addresses are kept beside them (no phystokv: the entries hold physical
++ * addresses only): the three levels are pt_top (32 entries), pt_mid_table[t] (512) and the bottom
++ * tables, whose pointers sit in pt_mid_shadow[t]->bottom[m].
++ */
++struct pt_shadow {
++	uint64_t *bottom[512];
++};
++static uint64_t *pt_mid_table[32];
++static struct pt_shadow *pt_mid_shadow[32];
++
++static struct pt_shadow *
++pt_shadow_alloc(void)
 +{
++	vm_offset_t page = 0;
++
++	if (kmem_alloc(kernel_map, &page, PAGE_SIZE, KMA_KOBJECT | KMA_ZERO | KMA_DATA, VM_KERN_MEMORY_IOKIT) != KERN_SUCCESS) {
++		return NULL;
++	}
++	return (struct pt_shadow *)page;
++}
++
++/* The bottom-level entry for GPU address `gpu`; with `create`, tables are made on the way. mali_lock held. */
++static uint64_t *
++pt_entry(uint64_t gpu, bool create)
++{
++	uint32_t t = (uint32_t)((gpu >> 30) & 31), m = (uint32_t)((gpu >> 21) & 511), b = (uint32_t)((gpu >> 12) & 511);
 +	uint64_t phys;
 +	uint64_t *table;
 +
-+	if (*entry & 1) {
-+		return (uint64_t *)phystokv(*entry & PTE_ADDRESS);
++	if (pt_top == NULL) {
++		if (!create || (pt_top = pt_page(&pt_top_phys)) == NULL) {
++			return NULL;
++		}
 +	}
-+	table = pt_page(&phys);
-+	if (table == NULL) {
-+		return NULL;
++	if (pt_mid_table[t] == NULL) {
++		struct pt_shadow *shadow;
++
++		if (!create || (table = pt_page(&phys)) == NULL) {
++			return NULL;
++		}
++		if ((shadow = pt_shadow_alloc()) == NULL) {
++			return NULL;
++		}
++		pt_mid_table[t] = table;
++		pt_mid_shadow[t] = shadow;
++		pt_top[t] = phys | PTE_TABLE;
++		flush_va((vm_offset_t)&pt_top[t], sizeof(pt_top[t]));
 +	}
-+	*entry = phys | PTE_TABLE;
-+	FlushPoC_DcacheRegion((vm_offset_t)entry, sizeof(*entry));
-+	return table;
++	if (pt_mid_shadow[t]->bottom[m] == NULL) {
++		if (!create || (table = pt_page(&phys)) == NULL) {
++			return NULL;
++		}
++		pt_mid_shadow[t]->bottom[m] = table;
++		pt_mid_table[t][m] = phys | PTE_TABLE;
++		flush_va((vm_offset_t)&pt_mid_table[t][m], sizeof(pt_mid_table[t][m]));
++	}
++	return &pt_mid_shadow[t]->bottom[m][b];
 +}
 +
 +/* One 4 KB page at GPU address `gpu` (mali_lock held, or before anyone else runs). */
 +static bool
 +map_page(uint64_t gpu, uint64_t phys)
 +{
-+	uint64_t *middle, *bottom, *entry;
++	uint64_t *entry = pt_entry(gpu, true);
 +
-+	if (pt_top == NULL && (pt_top = pt_page(&pt_top_phys)) == NULL) {
++	if (entry == NULL) {
 +		return false;
 +	}
-+	if ((middle = pt_below(&pt_top[(gpu >> 30) & 31])) == NULL || (bottom = pt_below(&middle[(gpu >> 21) & 511])) == NULL) {
-+		return false;
-+	}
-+	entry = &bottom[(gpu >> 12) & 511];
 +	*entry = (phys & PTE_ADDRESS) | PTE_AF | PTE_SH_INNER | PTE_AP_RW | PTE_PAGE;
-+	FlushPoC_DcacheRegion((vm_offset_t)entry, sizeof(*entry));
++	flush_va((vm_offset_t)entry, sizeof(*entry));
 +	return true;
 +}
 +
@@ -580,6 +627,13 @@ index 0000000..0c246a4
 +	return address;
 +}
 +
++/* For the IOKit service: clean + invalidate the CPU's cache over a kernel virtual range. */
++void
++a135f_mali_flush(uint64_t va, uint64_t len)
++{
++	flush_va((vm_offset_t)va, (size_t)len);
++}
++
 +void
 +a135f_mali_tag(__unused uint64_t address, __unused uint32_t kind)
 +{
@@ -601,18 +655,12 @@ index 0000000..0c246a4
 +{
 +	lck_mtx_lock(&mali_lock);
 +	for (uint64_t at = gpu; at < gpu + size; at += 4096) {
-+		uint64_t *entry = &pt_top[(at >> 30) & 31];
++		uint64_t *entry = pt_entry(at, false);
 +
-+		if (!(*entry & 1)) {
-+			continue;
++		if (entry != NULL) {
++			*entry = 0;
++			flush_va((vm_offset_t)entry, sizeof(*entry));
 +		}
-+		entry = &((uint64_t *)phystokv(*entry & PTE_ADDRESS))[(at >> 21) & 511];
-+		if (!(*entry & 1)) {
-+			continue;
-+		}
-+		entry = &((uint64_t *)phystokv(*entry & PTE_ADDRESS))[(at >> 12) & 511];
-+		*entry = 0;
-+		FlushPoC_DcacheRegion((vm_offset_t)entry, sizeof(*entry));
 +	}
 +	lck_mtx_unlock(&mali_lock);
 +	lck_mtx_lock(&mali_job_lock);           /* an entry taken out: the MMU may hold it */

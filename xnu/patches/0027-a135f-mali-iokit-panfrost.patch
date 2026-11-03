@@ -1,9 +1,9 @@
 diff --git a/iokit/Kernel/arm/A135FMali.cpp b/iokit/Kernel/arm/A135FMali.cpp
 new file mode 100644
-index 0000000..79a2c09
+index 0000000..a1d221b
 --- /dev/null
 +++ b/iokit/Kernel/arm/A135FMali.cpp
-@@ -0,0 +1,483 @@
+@@ -0,0 +1,482 @@
 +/*
 + * A135FMali: the Galaxy A13's Mali-G52 for programs to draw with.
 + *
@@ -13,9 +13,9 @@ index 0000000..79a2c09
 + * with the request's number as the selector and its structure passed in and back. What Linux does
 + * with mmap() on the device is the client memory of the type that is the buffer's handle.
 + *
-+ * IOSurfaces are the built-in A135FSurface
-+ * Jobs run to their end inside the submit call (a135f_mali_run), so waits are already satisfied
-+ * The CPU's caches are cleaned/invalidated around a job for surface-backed buffers (the GPU is not coherent).
++ * IOSurfaces are the built-in A135FSurface; jobs run to their end inside the submit call (a135f_mali_run),
++ * so waits are already satisfied; the CPU's caches are cleaned/invalidated around a job for
++ * surface-backed buffers (the GPU is not coherent).
 + */
 +#include <pexpert/arm64/board_config.h>
 +
@@ -24,17 +24,16 @@ index 0000000..79a2c09
 +#include <IOKit/IOLocks.h>
 +#include <IOKit/IOService.h>
 +#include <IOKit/IOKitKeys.h>
++#include <IOKit/IOPlatformExpert.h>
 +#include <IOKit/IOUserClient.h>
 +#include <IOKit/IOBufferMemoryDescriptor.h>
 +#include <mach/vm_param.h>
 +#include <sys/systm.h>
-+extern "C" {
-+#include <arm/caches_internal.h>
-+}
 +
 +#include "A135FSurface.h"
 +
 +extern "C" {
++void a135f_mali_flush(uint64_t va, uint64_t len);
 +bool a135f_mali_ready(void);
 +bool a135f_mali_parameter(uint32_t which, uint64_t * value);
 +uint64_t a135f_mali_address(uint64_t size);
@@ -126,7 +125,7 @@ index 0000000..79a2c09
 +void
 +A135FMaliStart(void)
 +{
-+	IOService * provider = IOService::getServiceRoot();
++	IOService * provider = IOService::getPlatform();
 +	A135FMali * gpu;
 +
 +	gMaliLock = IOLockAlloc();
@@ -330,7 +329,7 @@ index 0000000..79a2c09
 +
 +		if (b != NULL && b->surface != NULL && OSDynamicCast(IOBufferMemoryDescriptor, b->surface->memory) != NULL &&
 +		    (va = b->surface->kernelAddress()) != 0) {
-+			FlushPoC_DcacheRegion((vm_offset_t) va, (size_t) b->size);
++			a135f_mali_flush((uint64_t) va, b->size);
 +		}
 +	}
 +}
@@ -382,7 +381,7 @@ index 0000000..79a2c09
 +
 +IOReturn
 +A135FMaliUserClient::externalMethod(uint32_t selector, IOExternalMethodArguments * args,
-+    IOExternalMethodDispatch * dispatch, OSObject * target, void * reference)
++    __unused IOExternalMethodDispatch * dispatch, __unused OSObject * target, __unused void * reference)
 +{
 +	union {
 +		struct drm_gem_close close;
