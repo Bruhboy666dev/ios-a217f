@@ -33,10 +33,18 @@ diff --git a/iokit/Kernel/arm/hid/A135FHID.cpp b/iokit/Kernel/arm/hid/A135FHID.c
 +	panelW = 720;
 +	panelH = 1600;
 +#endif
++#if defined(A217F)
++	/* HID events use the physical panel range in both display modes;
++	 * framebuffer letterboxing must not shift the touch surface. */
++	fLogicalW = panelW;
++	fLogicalH = panelH;
++	fOffX = fOffY = 0;
++#else
 +	fLogicalW = native ? panelW : 1125;
 +	fLogicalH = native ? panelH : 2436;
 +	fOffX = (fLogicalW - panelW) / 2;
 +	fOffY = (fLogicalH - panelH) / 2;
++#endif
  	/* The digitizer covers the main display (backboardd maps it 1:1). */
  	setProperty("DisplayIntegrated", kOSBooleanTrue);
  	setProperty("SurfaceWidth", (unsigned long long)(68 << 16), 32);	/* mm, 16.16 */
