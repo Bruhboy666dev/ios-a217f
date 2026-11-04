@@ -2,7 +2,7 @@ diff --git a/bsd/conf/files b/bsd/conf/files
 index 4c7026a..de8c571 100644
 --- a/bsd/conf/files
 +++ b/bsd/conf/files
-@@ -104,10 +104,10 @@ bsd/dev/dtrace/fasttrap.c		optional config_dtrace
+@@ -104,10 +104,9 @@ bsd/dev/dtrace/fasttrap.c		optional config_dtrace
  bsd/dev/random/randomdev.c		standard
  
  bsd/dev/memdev.c			standard
@@ -10,7 +10,7 @@ index 4c7026a..de8c571 100644
  bsd/dev/a135f_sample.c			standard
  bsd/dev/a135f_keys.c			standard
 -bsd/dev/a135f_rpmh.c			standard
- bsd/dev/a135f_spmi.c			standard
+-bsd/dev/a135f_spmi.c			standard
  bsd/dev/a135f_usb.c			standard
  bsd/dev/mem.c				standard
  bsd/dev/munge.c 			optional config_requires_u32_munging

@@ -352,8 +352,8 @@ index 25ea6f6..b063832 100644
  
  	IOLockLock(fLock);
  	bool was = fDown[finger];
--	IOFixed nx = (IOFixed)(((int64_t)x << 16) / 1080);
--	IOFixed ny = (IOFixed)(((int64_t)y << 16) / 2400);
+-	IOFixed nx = (IOFixed)(((int64_t)x << 16) / A135F_TOUCH_PANEL_W);
+-	IOFixed ny = (IOFixed)(((int64_t)y << 16) / A135F_TOUCH_PANEL_H);
 +	/* Panel pixels -> the presented 1125x2436 display (A135FFramebuffer.cpp). */
 +	IOFixed nx = (IOFixed)(((int64_t)(x + fOffX) << 16) / fLogicalW);
 +	IOFixed ny = (IOFixed)(((int64_t)(y + fOffY) << 16) / fLogicalH);

@@ -1,0 +1,6 @@
+diff --git a/bsd/conf/files b/bsd/conf/files
+--- a/bsd/conf/files
++++ b/bsd/conf/files
+@@ -648,1 +648,2 @@
+ bsd/dev/cpu_copy_in_cksum_gen.c			optional skywalk
++bsd/dev/a135f_spmi.c			standard
