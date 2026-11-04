@@ -1,0 +1,57 @@
+From: Codex <codex@localhost>
+Subject: [PATCH] A21s: expose a gated Metal probe service
+
+The service is published only with a135f_metal_probe=1. It uses the existing
+Mali user client as the accelerator port; the user-space bundle records Metal
+calls and returns stub values. This is a bring-up probe, not rendering.
+
+diff --git a/iokit/Kernel/arm/A135FMali.cpp b/iokit/Kernel/arm/A135FMali.cpp
+--- a/iokit/Kernel/arm/A135FMali.cpp
++++ b/iokit/Kernel/arm/A135FMali.cpp
+@@ -118,0 +119,39 @@
++class IOAcceleratorES : public IOService
++{
++	OSDeclareDefaultStructors(IOAcceleratorES);
++};
++OSDefineMetaClassAndStructors(IOAcceleratorES, IOService);
++
++/* A diagnostic Metal service, completely disabled unless requested. */
++static void
++A135FMetalProbeStart(IOService * provider)
++{
++	uint32_t enabled = 0;
++	IOAcceleratorES * accelerator;
++	if (!PE_parse_boot_argn("a135f_metal_probe", &enabled, sizeof(enabled)) || enabled == 0) return;
++	accelerator = OSTypeAlloc(IOAcceleratorES);
++	if (accelerator == NULL || !accelerator->init()) {
++		OSSafeReleaseNULL(accelerator);
++		IOLog("A135F Metal probe: could not allocate IOAcceleratorES\n");
++		return;
++	}
++	accelerator->setName("mali");
++	accelerator->setProperty(kIOUserClientClassKey, "A135FMaliUserClient");
++	accelerator->setProperty("MetalPluginName", "A135FMetalProbe");
++	accelerator->setProperty("MetalPluginClassName", "A135FMetalProbeDevice");
++	if (!accelerator->attach(provider)) {
++		accelerator->release();
++		IOLog("A135F Metal probe: could not attach IOAcceleratorES\n");
++		return;
++	}
++	if (!accelerator->start(provider)) {
++		accelerator->detach(provider);
++		accelerator->release();
++		IOLog("A135F Metal probe: IOAcceleratorES did not start\n");
++		return;
++	}
++	accelerator->registerService();
++	accelerator->release();
++	IOLog("A135F Metal probe: published test-only IOAcceleratorES\n");
++}
++
+@@ -132 +171,2 @@
+-	if (!gpu->start(provider)) {
++	bool started = gpu->start(provider);
++	if (!started) {
+@@ -134,0 +175,2 @@
++	} else {
++		A135FMetalProbeStart(gpu);
