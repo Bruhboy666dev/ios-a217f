@@ -1,28 +1,38 @@
 From: Codex <codex@localhost>
 Subject: [PATCH] A21s: expose a gated Metal probe service
 
-The service is published only with a135f_metal_probe=1. It uses the existing
-Mali user client as the accelerator port; the user-space bundle records Metal
-calls and returns stub values. This is a bring-up probe, not rendering.
-
 diff --git a/iokit/Kernel/arm/A135FMali.cpp b/iokit/Kernel/arm/A135FMali.cpp
+index 7c0e68f..06449b2 100644
 --- a/iokit/Kernel/arm/A135FMali.cpp
 +++ b/iokit/Kernel/arm/A135FMali.cpp
-@@ -118,0 +119,39 @@
+@@ -12,6 +12,7 @@
+  * surface-backed buffers (the GPU is not coherent).
+  */
+ #include <pexpert/arm64/board_config.h>
++#include <pexpert/pexpert.h>
+ 
+ #if defined(A135F)
+ #include <IOKit/IOLib.h>
+@@ -116,6 +117,47 @@ A135FMali::start(IOService * provider)
+ 	return true;
+ }
+ 
 +class IOAcceleratorES : public IOService
 +{
 +	OSDeclareDefaultStructors(IOAcceleratorES);
 +};
 +OSDefineMetaClassAndStructors(IOAcceleratorES, IOService);
 +
-+/* A diagnostic Metal service, completely disabled unless requested. */
++/* Publish a diagnostic Metal service only for explicit probe boots. */
 +static void
 +A135FMetalProbeStart(IOService * provider)
 +{
 +	uint32_t enabled = 0;
-+	IOAcceleratorES * accelerator;
-+	if (!PE_parse_boot_argn("a135f_metal_probe", &enabled, sizeof(enabled)) || enabled == 0) return;
-+	accelerator = OSTypeAlloc(IOAcceleratorES);
++	bool found = PE_parse_boot_argn("a135f_metal_probe", &enabled, sizeof(enabled));
++	IOLog("A135F Metal probe: flag %s value %u\n", found ? "present" : "absent", enabled);
++	if (!found || enabled == 0) return;
++
++	IOAcceleratorES * accelerator = OSTypeAlloc(IOAcceleratorES);
 +	if (accelerator == NULL || !accelerator->init()) {
 +		OSSafeReleaseNULL(accelerator);
 +		IOLog("A135F Metal probe: could not allocate IOAcceleratorES\n");
@@ -48,10 +58,20 @@ diff --git a/iokit/Kernel/arm/A135FMali.cpp b/iokit/Kernel/arm/A135FMali.cpp
 +	IOLog("A135F Metal probe: published test-only IOAcceleratorES\n");
 +}
 +
-@@ -132 +171,2 @@
+ void
+ A135FMaliStart(void)
+ {
+@@ -129,9 +171,12 @@ A135FMaliStart(void)
+ 		IOLog("A135FMali: cannot create the service\n");
+ 		return;
+ 	}
 -	if (!gpu->start(provider)) {
 +	bool started = gpu->start(provider);
 +	if (!started) {
-@@ -134,0 +175,2 @@
+ 		gpu->detach(provider);
+ 		IOLog("A135FMali: the service did not start\n");
 +	} else {
 +		A135FMetalProbeStart(gpu);
+ 	}
+ 	gpu->release();
+ 	IOLog("A135FMali: the GPU is there for programs to draw with\n");
