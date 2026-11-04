@@ -1046,7 +1046,7 @@ new file mode 100644
 index 0000000..25ea6f6
 --- /dev/null
 +++ b/iokit/Kernel/arm/hid/A135FHID.cpp
-@@ -0,0 +1,553 @@
+@@ -0,0 +1,561 @@
 +/*
 + * A135F: HID event services for the iOS userland (backboardd's HID event
 + * system).
