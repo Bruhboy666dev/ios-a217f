@@ -1,24 +1,7 @@
-diff --git a/bsd/dev/a135f_touch.c b/bsd/dev/a135f_touch.c
---- a/bsd/dev/a135f_touch.c
-+++ b/bsd/dev/a135f_touch.c
-@@ -196,8 +196,13 @@
- #define APP_MAX_OBJECTS 36
- #define APP_LEN         38
- 
-+#if defined(A217F)
-+#define PANEL_W         720
-+#define PANEL_H         1600
-+#else
- #define PANEL_W         1080
- #define PANEL_H         2408
-+#endif
- 
- #define TOUCH_TRIES     5
- 
 diff --git a/iokit/Kernel/arm/hid/A135FHID.cpp b/iokit/Kernel/arm/hid/A135FHID.cpp
 --- a/iokit/Kernel/arm/hid/A135FHID.cpp
 +++ b/iokit/Kernel/arm/hid/A135FHID.cpp
-@@ -431,10 +431,15 @@ A135FHIDTouch::start(IOService *provider)
+@@ -431,10 +431,23 @@ A135FHIDTouch::start(IOService *provider)
  	if (!fLock || !IOHIDEventService::start(provider)) {
  		return false;
  	}

@@ -35,7 +35,7 @@ new file mode 100644
 index 0000000..9f0f566
 --- /dev/null
 +++ b/bsd/dev/a135f_touch.c
-@@ -0,0 +1,1297 @@
+@@ -0,0 +1,1304 @@
 +/*
 + * Touchscreen for the Galaxy A13: Omnivision/Synaptics TCM "TD4150" TDDI over SPI.
 + *
@@ -195,9 +195,6 @@ index 0000000..9f0f566
 +#define APP_MAX_Y       34
 +#define APP_MAX_OBJECTS 36
 +#define APP_LEN         38
-+
-+#define PANEL_W         1080
-+#define PANEL_H         2408
 +
 +#define TOUCH_TRIES     5
 +
@@ -959,8 +956,18 @@ index 0000000..9f0f566
 +		struct tcm_object *o = &objects[i];
 +
 +		if (o->status == TCM_OBJECT_FINGER || o->status == TCM_OBJECT_GLOVED_FINGER) {
-+			int px = (int)((uint64_t)MIN(o->x, max_x) * (PANEL_W - 1) / max_x);
-+			int py = (int)((uint64_t)MIN(o->y, max_y) * (PANEL_H - 1) / max_y);
++			uint32_t raw_x = MIN(o->x, max_x);
++			uint32_t raw_y = MIN(o->y, max_y);
++			int px, py;
++			if (max_x < 800) {
++				/* A21s app-info is already in its native 720x1600 pixel space. */
++				px = (int)raw_x;
++				py = (int)raw_y;
++			} else {
++				/* Preserve the A13 scale for its wider native digitizer. */
++				px = (int)((uint64_t)raw_x * 1079 / max_x);
++				py = (int)((uint64_t)raw_y * 2407 / max_y);
++			}
 +
 +			if (touch_dbg && reports_seen < 30) {
 +				printf("A135F TOUCH: obj %u status %u raw %u,%u z %u -> %d,%d\n",
