@@ -2,7 +2,7 @@ diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
 index c6d7c92..9a78378 100644
 --- a/bsd/kern/kern_exec.c
 +++ b/bsd/kern/kern_exec.c
-@@ -5568,10 +5568,115 @@ bad:
+@@ -5568,10 +5568,121 @@ bad:
   * Note:	The argument and environment vectors are user space pointers
   *		to arrays of user space pointers.
   */
@@ -26,12 +26,16 @@ index c6d7c92..9a78378 100644
 +{
 +	static bool checked;
 +	uint32_t on = 0;
++	bool found;
 +
 +	if (checked) {
 +		return;
 +	}
 +	checked = true;
-+	if (exec_inject_conf[0] == 0 && PE_parse_boot_argn("a135f_gl", &on, sizeof(on)) && on != 0) {
++	found = PE_parse_boot_argn("a135f_gl", &on, sizeof(on));
++	printf("A135F exec-inject: a135f_gl %s value %u config %s\n", found ? "present" : "absent", on,
++	    exec_inject_conf[0] == 0 ? "empty" : "set");
++	if (exec_inject_conf[0] == 0 && found && on != 0) {
 +		strlcpy(exec_inject_conf, A135F_INJECT_DEFAULT, sizeof(exec_inject_conf));
 +	}
 +}
@@ -92,6 +96,8 @@ index c6d7c92..9a78378 100644
 +			if (!matched && liblen != 0 &&
 +			    exec_inject_name_matches(name, namelen, word)) {
 +				matched = true;
++				printf("A135F exec-inject: target match '%.*s' for '%.*s'\n", (int)(p - word), word,
++				    (int)(namelen < 128 ? namelen : 128), name);
 +			}
 +		}
 +		if (matched && liblen != 0 && used + 1 + liblen < size) {
@@ -118,7 +124,7 @@ index c6d7c92..9a78378 100644
  	int error = 0;
  	int     ptr_size = (imgp->ip_flags & IMGPF_WAS_64BIT_ADDR) ? 8 : 4;
  	int new_ptr_size = (imgp->ip_flags & IMGPF_IS_64BIT_ADDR) ? 8 : 4;
-@@ -5741,6 +5827,22 @@ exec_extract_strings(struct image_params *imgp)
+@@ -5741,6 +5827,25 @@ exec_extract_strings(struct image_params *imgp)
  		imgp->ip_envc++;
  	}
  
@@ -135,6 +141,9 @@ index c6d7c92..9a78378 100644
 +		}
 +		imgp->ip_argspace -= new_ptr_size;
 +		imgp->ip_envc++;
++		printf("A135F exec-inject: environment added for '%.*s'\n",
++		    (int)(imgp->ip_ndp->ni_cnd.cn_namelen < 128 ? imgp->ip_ndp->ni_cnd.cn_namelen : 128),
++		    imgp->ip_ndp->ni_cnd.cn_nameptr);
 +	}
 +#endif
 +
