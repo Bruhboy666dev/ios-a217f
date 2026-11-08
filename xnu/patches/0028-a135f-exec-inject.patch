@@ -124,13 +124,26 @@ index c6d7c92..9a78378 100644
  	int error = 0;
  	int     ptr_size = (imgp->ip_flags & IMGPF_WAS_64BIT_ADDR) ? 8 : 4;
  	int new_ptr_size = (imgp->ip_flags & IMGPF_IS_64BIT_ADDR) ? 8 : 4;
-@@ -5741,6 +5827,25 @@ exec_extract_strings(struct image_params *imgp)
+@@ -5741,6 +5827,38 @@ exec_extract_strings(struct image_params *imgp)
  		imgp->ip_envc++;
  	}
  
 +#if defined(ARM64_BOARD_CONFIG_A135F)
 +	/* one more variable for the programs that get our library inside them (see exec_inject_env) */
 +	if (exec_inject_env(imgp, inject_env, sizeof(inject_env))) {
++		/* SamiOs tested this on A21s with a permissive AMFI stub. Keep A217F
++		 * signature checks, but let this explicit backboardd injection reach dyld. */
++		if (imgp->ip_ndp != NULL &&
++		    exec_inject_name_matches(imgp->ip_ndp->ni_cnd.cn_nameptr,
++		    imgp->ip_ndp->ni_cnd.cn_namelen, "backboardd") &&
++		    strstr(inject_env, "/usr/local/lib/a135f/liba135f.inject.dylib") != NULL) {
++			if (imgp->ip_csflags & CS_RESTRICT) {
++				imgp->ip_csflags &= ~CS_RESTRICT;
++				printf("A135F exec-inject: cleared CS_RESTRICT for backboardd\n");
++			} else {
++				printf("A135F exec-inject: backboardd CS_RESTRICT already clear\n");
++			}
++		}
 +		error = exec_add_user_string(imgp, CAST_USER_ADDR_T(inject_env), UIO_SYSSPACE, TRUE);
 +		if (error) {
 +			goto bad;
