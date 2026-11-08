@@ -1,0 +1,12 @@
+[package]
+name = "a135f-metal2vulkan-ffi"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0-or-later OR LGPL-3.0-or-later"
+
+[lib]
+name = "a135f_metal2vulkan"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+metal2vulkan-runtime = { git = "https://github.com/steelbrain/metal2vulkan", rev = "219f01365dc4c8eb346816c405b5b17403793764" }

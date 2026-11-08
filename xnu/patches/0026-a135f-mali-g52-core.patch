@@ -15,11 +15,11 @@ new file mode 100644
 index 0000000..c82fa2d
 --- /dev/null
 +++ b/bsd/dev/a135f_mali.c
-@@ -0,0 +1,756 @@
+@@ -0,0 +1,771 @@
 +/*
-+ * The Mali-G52 of the Galaxy A13 (Exynos850), brought up from the kernel. Opt-in: boot-arg
-+ * a135f_mali=1 (a GPU register read with its power domain or clock off hangs the bus, so nothing
-+ * here runs by default).
++ * Mali-G52 on Galaxy A13 and A21s (Exynos850), brought up from the kernel.
++ * Opt-in: boot-arg a135f_mali=1. On A21s, S-Boot has already enabled G3D;
++ * check its power-domain status and leave its clock/domain registers untouched.
 + *
 + * Panfrost/Bifrost driver for Mali-G52 (Exynos850)
 + * everything from the GPU's soft reset on is Bifrost's and is the same. Only the way the block
@@ -452,15 +452,29 @@ index 0000000..c82fa2d
 +	uint32_t shaders, tiler, l2;
 +
 +	pmu = ml_io_map(PMU_PA, 0x2000);
++	mali = ml_io_map(MALI_PA, 0x5000);
++#if defined(A217F)
++	/* SamiOs-21s reports that S-Boot leaves Exynos 850 G3D powered and
++	 * clocked. Do not reprogram its domain or CMU from iOS: that can hang
++	 * SoC buses or require EL3. Observe PMU status before touching the GPU. */
++	if (!pmu || !mali) {
++		printf("a135f mali: cannot map A21s GPU registers\n");
++		return;
++	}
++	if ((rd(pmu, PMU_PD_G3D + 4) & 1) == 0) {
++		printf("a135f mali: A21s S-Boot left G3D powered off; not changing PMU/CMU\n");
++		return;
++	}
++	reached = 3;
++#else
 +	cmu_top = ml_io_map(CMU_TOP_PA, 0x8000);
 +	cmu_g3d = ml_io_map(CMU_G3D_PA, 0x8000);
-+	mali = ml_io_map(MALI_PA, 0x5000);
 +	if (!pmu || !cmu_top || !cmu_g3d || !mali) {
 +		printf("a135f mali: cannot map registers\n");
 +		return;
 +	}
 +
-+	/* 1, 2, 3: clock, power, then the block's own clocks (reachable only with power) */
++	/* A13 clock and domain setup; A21s deliberately skips these writes. */
 +	if (!clocks_top()) {
 +		return;
 +	}
@@ -471,6 +485,7 @@ index 0000000..c82fa2d
 +	reached = 2;
 +	clocks_g3d();
 +	reached = 3;
++#endif
 +
 +	/* 4: the GPU itself */
 +	gpu_id = rd(mali, GPU_ID_REG);

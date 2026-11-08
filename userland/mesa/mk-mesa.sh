@@ -20,8 +20,8 @@ if [ -z "$SDK" ]; then
 	if command -v xcrun >/dev/null 2>&1; then SDK=$(xcrun --sdk iphoneos --show-sdk-path)
 	else SDK=${THEOS:-$HOME/theos}/sdks/iPhoneOS16.5.sdk; fi
 fi
-CC=${CC:-clang -target arm64-apple-ios16.0}
-CXX=${CXX:-clang++ -target arm64-apple-ios16.0}
+CC=${CC:-${IOS_CC:-clang -target arm64-apple-ios16.0}}
+CXX=${CXX:-${IOS_CXX:-clang++ -target arm64-apple-ios16.0}}
 DRIVERS=${DRIVERS:-softpipe,panfrost}
 mkdir -p "$B/out" "$HERE/out"; cd "$B"
 
@@ -32,11 +32,11 @@ for p in "$HERE"/patches/*.patch; do patch -s --no-backup-if-mismatch -d mesa-$V
 python3 "$HERE/apply-panfrost-darwin.py" mesa-$VERSION   # exits 1 and names what it could not place
 
 if [ ! -x venv/bin/python3 ]; then python3 -m venv venv; venv/bin/pip -q install mako pyyaml packaging; fi
-export PATH=$B/venv/bin:$PATH
+export PATH=$B/host/bin:$B/venv/bin:$PATH
 
 # 1. the host tool panfrost's precompiled shaders need
 if [ ! -x host/bin/mesa_clc ]; then
-	meson setup build-host mesa-$VERSION --prefix=$B/host -Dllvm=enabled -Dgallium-drivers= -Dvulkan-drivers= \
+	CC=clang CXX=clang++ meson setup build-host mesa-$VERSION --prefix=$B/host -Dllvm=enabled -Dgallium-drivers= -Dvulkan-drivers= \
 		-Dplatforms= -Dglx=disabled -Degl=disabled -Dgbm=disabled -Dmesa-clc=enabled -Dinstall-mesa-clc=true \
 		-Dprecomp-compiler=enabled -Dinstall-precomp-compiler=true -Dtools= -Dbuild-tests=false > meson-host.log
 	ninja -C build-host install > ninja-host.log
@@ -47,11 +47,15 @@ cat > cross.ini <<INI
 [binaries]
 c = [$(printf "'%s', " $CC | sed 's/, $//'), '-isysroot', '$SDK']
 cpp = [$(printf "'%s', " $CXX | sed 's/, $//'), '-isysroot', '$SDK', '-fuse-cxa-atexit']
+objc = [$(printf "'%s', " $CC | sed 's/, $//'), '-isysroot', '$SDK']
 ar = 'llvm-ar'
 ranlib = 'llvm-ranlib'
 strip = 'llvm-strip'
 pkg-config = 'false'
-mesa_clc = '$B/host/bin/mesa_clc'
+
+[built-in options]
+c_args = ['-DHAVE_STRUCT_TIMESPEC', '-D_DARWIN_C_SOURCE', '-DHAVE_DLFCN_H', '-DHAVE_FUNC_ATTRIBUTE_PACKED']
+cpp_args = ['-DHAVE_STRUCT_TIMESPEC', '-D_DARWIN_C_SOURCE', '-DHAVE_DLFCN_H', '-DHAVE_FUNC_ATTRIBUTE_PACKED']
 
 [host_machine]
 system = 'darwin'
@@ -63,8 +67,12 @@ endian = 'little'
 [properties]
 needs_exe_wrapper = true
 INI
+cat > native.ini <<INI
+[binaries]
+mesa_clc = '$B/host/bin/mesa_clc'
+INI
 BUILD=build-${DRIVERS//,/-}
-[ -f $BUILD/build.ninja ] || meson setup $BUILD mesa-$VERSION --cross-file cross.ini --wrap-mode=nofallback \
+[ -f $BUILD/build.ninja ] || meson setup $BUILD mesa-$VERSION --native-file native.ini --cross-file cross.ini --wrap-mode=nofallback \
 	--prefix=/usr/local --libdir=lib/a135f --buildtype=release -Db_ndebug=true \
 	-Dplatforms= -Dgallium-drivers="$DRIVERS" -Dvulkan-drivers= -Dglx=disabled -Degl=disabled -Dgbm=disabled \
 	-Dosmesa=true -Dllvm=disabled -Dshared-glapi=enabled -Dgles1=disabled -Dgles2=enabled -Dopengl=true \
@@ -76,7 +84,16 @@ ninja -C $BUILD > ninja.log
 
 O=$HERE/out
 llvm-strip -x -o $O/libOSMesa.8.dylib $BUILD/src/gallium/targets/osmesa/libOSMesa.8.dylib
-${INSTALL_NAME_TOOL:-llvm-install-name-tool} -id /usr/local/lib/a135f/libOSMesa.8.dylib $O/libOSMesa.8.dylib
+if [ -n "$INSTALL_NAME_TOOL" ]; then
+	"$INSTALL_NAME_TOOL" -id /usr/local/lib/a135f/libOSMesa.8.dylib "$O/libOSMesa.8.dylib"
+elif command -v llvm-install-name-tool >/dev/null 2>&1; then
+	llvm-install-name-tool -id /usr/local/lib/a135f/libOSMesa.8.dylib "$O/libOSMesa.8.dylib"
+elif command -v install_name_tool >/dev/null 2>&1; then
+	install_name_tool -id /usr/local/lib/a135f/libOSMesa.8.dylib "$O/libOSMesa.8.dylib"
+else
+	ID=$(llvm-objdump --macho --dylib-id "$O/libOSMesa.8.dylib" | tail -n 1)
+	[ "$ID" = /usr/local/lib/a135f/libOSMesa.8.dylib ] || { echo "mk-mesa.sh: OSMesa install name is $ID" >&2; exit 1; }
+fi
 ${NM:-llvm-nm} -gU $O/libOSMesa.8.dylib | awk '$3 ~ /^_gl/ { print substr($3, 2) }' > $O/exported-gl.txt
 cp mesa-$VERSION/src/mapi/glapi/registry/gl.xml $O/gl.xml
 echo "mk-mesa.sh: Mesa $VERSION ($DRIVERS): $O/libOSMesa.8.dylib, $(stat -c %s $O/libOSMesa.8.dylib) bytes, $(wc -l < $O/exported-gl.txt) gl* functions"

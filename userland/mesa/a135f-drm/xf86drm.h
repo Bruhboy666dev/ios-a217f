@@ -24,6 +24,7 @@ typedef struct _drmVersion {
 } drmVersion, *drmVersionPtr;
 
 int drmOpenWithType(const char *name, const char *busid, int type);
+int drmCloseBufferHandle(int fd, uint32_t handle);
 int drmIoctl(int fd, unsigned long request, void *arg);
 int drmCommandWrite(int fd, unsigned long index, const void *data, unsigned long size);
 int drmCommandWriteRead(int fd, unsigned long index, void *data, unsigned long size);

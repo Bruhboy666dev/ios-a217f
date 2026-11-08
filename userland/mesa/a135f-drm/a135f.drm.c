@@ -94,6 +94,13 @@ drmIoctl(int fd, unsigned long request, void *arg)
 }
 
 int
+drmCloseBufferHandle(int fd, uint32_t handle)
+{
+	struct drm_gem_close close = { .handle = handle };
+	return drmIoctl(fd, DRM_IOCTL_GEM_CLOSE, &close);
+}
+
+int
 drmCommandWrite(int fd, unsigned long index, const void *data, unsigned long size)
 {
 	(void)fd;

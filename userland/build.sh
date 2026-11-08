@@ -21,7 +21,9 @@ if [ -z "$SDK" ]; then
 	else SDK=${THEOS:-$HOME/theos}/sdks/iPhoneOS16.5.sdk; fi
 fi
 [ -d "$SDK" ] || { echo "build.sh: no iOS SDK at $SDK (set SDK=)"; exit 1; }
-CC=${CC:-clang -target arm64-apple-ios16.0}   # on Linux: source ~/ios-toolchain/env.sh first (BUILD-LINUX.md)
+CC=${CC:-${IOS_CC:-clang -target arm64-apple-ios16.0}}   # on Linux: source ~/ios-toolchain/env.sh first (BUILD-LINUX.md)
+CXX=${CXX:-${IOS_CXX:-clang++ -target arm64-apple-ios16.0}}
+export CC CXX
 DYN="$CC -isysroot $SDK -O2 -Wall -Wno-unused-function"
 LIBDIR=/usr/local/lib/a135f
 mkdir -p out obj
