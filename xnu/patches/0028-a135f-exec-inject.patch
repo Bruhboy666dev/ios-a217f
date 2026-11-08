@@ -124,7 +124,7 @@ index c6d7c92..9a78378 100644
  	int error = 0;
  	int     ptr_size = (imgp->ip_flags & IMGPF_WAS_64BIT_ADDR) ? 8 : 4;
  	int new_ptr_size = (imgp->ip_flags & IMGPF_IS_64BIT_ADDR) ? 8 : 4;
-@@ -5741,6 +5827,38 @@ exec_extract_strings(struct image_params *imgp)
+@@ -5741,6 +5827,39 @@ exec_extract_strings(struct image_params *imgp)
  		imgp->ip_envc++;
  	}
  
@@ -136,7 +136,8 @@ index c6d7c92..9a78378 100644
 +		if (imgp->ip_ndp != NULL &&
 +		    exec_inject_name_matches(imgp->ip_ndp->ni_cnd.cn_nameptr,
 +		    imgp->ip_ndp->ni_cnd.cn_namelen, "backboardd") &&
-+		    strstr(inject_env, "/usr/local/lib/a135f/liba135f.inject.dylib") != NULL) {
++		    strncmp(inject_env, "DYLD_INSERT_LIBRARIES=/usr/local/lib/a135f/liba135f.inject.dylib",
++		    sizeof("DYLD_INSERT_LIBRARIES=/usr/local/lib/a135f/liba135f.inject.dylib") - 1) == 0) {
 +			if (imgp->ip_csflags & CS_RESTRICT) {
 +				imgp->ip_csflags &= ~CS_RESTRICT;
 +				printf("A135F exec-inject: cleared CS_RESTRICT for backboardd\n");
